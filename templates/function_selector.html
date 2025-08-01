@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Hot Patch Lab</title>
+  <style>
+    /* Reset and base styles */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(to right, #f0f4f8, #d9e2ec);
+      padding: 2rem;
+      color: #333;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 1.5rem;
+      font-size: 2.2rem;
+      color: #1f2937;
+    }
+
+    #search-bar {
+      display: block;
+      margin: 0 auto 2rem auto;
+      padding: 0.75rem 1rem;
+      width: 100%;
+      max-width: 500px;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+      transition: box-shadow 0.2s ease;
+    }
+
+    #search-bar:focus {
+      outline: none;
+      border-color: #4f46e5;
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
+    }
+
+    .function-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 1rem;
+      animation: fadeIn 0.5s ease;
+    }
+
+    .function-item form {
+      display: block;
+    }
+
+    .function-item button {
+      width: 100%;
+      padding: 0.75rem;
+      font-size: 0.95rem;
+      font-weight: 500;
+      background-color: #ffffff;
+      border: 2px solid #e5e7eb;
+      border-radius: 8px;
+      cursor: pointer;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+      transition: all 0.2s ease;
+    }
+
+    .function-item button:hover {
+      background-color: #6366f1;
+      color: white;
+      border-color: #4f46e5;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .back-button-form {
+      position: absolute;
+      top: 1.5rem;
+      left: 1.5rem;
+    }
+
+    .back-button-form button {
+      background-color: #4f46e5;
+      color: white;
+      border: none;
+      padding: 0.6rem 1.2rem;
+      font-size: 0.95rem;
+      font-weight: 500;
+      border-radius: 6px;
+      cursor: pointer;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      transition: background-color 0.2s ease;
+    }
+
+    .back-button-form button:hover {
+      background-color: #4338ca;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Responsive improvements */
+    @media (max-width: 600px) {
+      h1 {
+        font-size: 1.5rem;
+      }
+
+      #search-bar {
+        font-size: 0.9rem;
+      }
+
+      .function-item button {
+        font-size: 0.85rem;
+      }
+    }
+  </style>
+
+  <script>
+    function filterFunctions() {
+      const input = document.getElementById('search-bar').value.toLowerCase();
+      const items = document.querySelectorAll('.function-item');
+
+      items.forEach(item => {
+        const text = item.innerText.toLowerCase();
+        item.classList.toggle('hidden', !text.includes(input));
+      });
+    }
+  </script>
+</head>
+<body>
+
+  <form method="GET" action="/" class="back-button-form">
+    <button type="submit">← Back</button>
+  </form>
+
+  <h1>Chose: {{process}}</h1>
+
+  <input type="text" id="search-bar" oninput="filterFunctions()" placeholder="🔍 Search functions...">
+
+  <div class="function-grid">
+    {{#functions}}
+    <div class="function-item">
+      <form method="POST" action="/{{process}}/{{.}}">
+        <button type="submit">{{.}}</button>
+      </form>
+    </div>
+    {{/functions}}
+  </div>
+
+</body>
+</html>
+
