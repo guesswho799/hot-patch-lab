@@ -16,12 +16,13 @@
 ElfReader::ElfReader(std::string file_name)
     : _file(std::ifstream(file_name)), _file_name(file_name),
       _header(header_factory()), _sections(sections_factory()),
-      _static_symbols(static_symbols_factory()), _strings(strings_factory()) {}
+      _static_symbols(static_symbols_factory()), _dynamic_symbols(dynamic_symbols_factory()),_strings(strings_factory()) {}
 
 ElfReader::ElfReader(ElfReader &&other)
     : _file(std::ifstream(other._file_name)), _file_name(other._file_name),
       _header(other.get_header()), _sections(other.get_sections()),
       _static_symbols(other.get_static_symbols()),
+      _dynamic_symbols(other.get_dynamic_symbols()),
       _strings(other.get_strings()) {}
 
 ElfReader &ElfReader::operator=(ElfReader &&other) {
@@ -30,6 +31,7 @@ ElfReader &ElfReader::operator=(ElfReader &&other) {
   _header = other.get_header();
   _sections = other.get_sections();
   _static_symbols = other.get_static_symbols();
+  _dynamic_symbols = other.get_dynamic_symbols();
   _strings = other.get_strings();
   return *this;
 }
@@ -43,6 +45,10 @@ std::vector<NamedSection> ElfReader::get_sections() const { return _sections; }
 
 std::vector<NamedSymbol> ElfReader::get_static_symbols() const {
   return _static_symbols;
+}
+
+std::vector<NamedSymbol> ElfReader::get_dynamic_symbols() const {
+  return _dynamic_symbols;
 }
 
 std::vector<ElfString> ElfReader::get_strings() const { return _strings; }
@@ -128,6 +134,51 @@ NamedSymbol ElfReader::get_symbol(const std::string &name) const {
     throw std::runtime_error("missing function: " + name);
 
   return *iterator;
+}
+
+std::vector<Disassembler::Line>
+ElfReader::get_function_code(const NamedSymbol &function,
+                             bool try_resolve) const {
+  if (!_file.is_open()) {
+    throw std::runtime_error("elf reader open failed");
+  }
+
+  const uint64_t offset =
+      function.value + _sections[function.section_index].unloaded_offset -
+      _sections[function.section_index].loaded_virtual_address;
+  _file.seekg(static_cast<long>(offset));
+
+  std::vector<unsigned char> buffer(function.size);
+  _file.read(reinterpret_cast<char *>(buffer.data()), buffer.size());
+
+  Disassembler disassembler{};
+  if (try_resolve)
+    return disassembler.disassemble(buffer, function.value,
+                                    get_static_symbols(), get_dynamic_symbols(),
+                                    get_strings());
+  else
+    return disassembler.disassemble(buffer, function.value);
+}
+
+std::vector<Disassembler::Line>
+ElfReader::get_function_code_by_name(std::string name) const {
+  return get_function_code(get_function(name, 0), true);
+}
+
+NamedSymbol ElfReader::get_function(std::string name,
+                                    uint64_t base_address) const {
+  const auto function_filter = [&](const NamedSymbol &symbol) {
+    return symbol.type & SymbolType::function && symbol.name == name;
+  };
+  auto iterator = std::find_if(_static_symbols.begin(), _static_symbols.end(),
+                               function_filter);
+  if (iterator == _static_symbols.end())
+    throw std::runtime_error("elf reader function not found");
+
+  NamedSymbol result = *iterator;
+  result.value += base_address;
+
+  return result;
 }
 
 Function ElfReader::get_function(const std::string &name) const {
@@ -322,6 +373,70 @@ std::vector<Function> ElfReader::get_functions_from_array_section(
   }
 
   return result;
+}
+
+std::vector<NamedSymbol> ElfReader::dynamic_symbols_factory() {
+  auto dynamic_symbols = symbols_factory(dynamic_symbol_section_name,
+                                         dynamic_symbol_name_section_name);
+  resolve_dynamic_symbols_address(dynamic_symbols);
+  return dynamic_symbols;
+}
+
+void ElfReader::resolve_dynamic_symbols_address(
+    std::vector<NamedSymbol> &symbols) {
+  constexpr int jmp_offset = 1;
+  constexpr auto plt_entry_size = 16;
+  const auto plt_section = get_section(relocation_plt_section_name);
+  const auto plt_index =
+      static_cast<uint16_t>(get_section_index(relocation_plt_section_name));
+  uint64_t counter = 0;
+  const std::string name;
+
+  struct plt_entry {
+    uint64_t entry_address;
+    uint64_t entry_jump_to;
+  };
+  std::vector<plt_entry> plt_entries;
+
+  while (static_cast<uint64_t>(_file.tellg()) <
+         plt_section.unloaded_offset + plt_section.size) {
+    const uint64_t entry_address =
+        plt_section.unloaded_offset + counter * plt_entry_size;
+    const NamedSymbol entry{.name = name,
+                            .type = SymbolType::function,
+                            .section_index = plt_index,
+                            .value = entry_address,
+                            .size = plt_entry_size};
+    const Disassembler::Line entry_code =
+        get_function_code(entry, false)[jmp_offset];
+
+    const int64_t relative_jump_address =
+        Disassembler::get_address(entry_code.arguments);
+    const uint64_t entry_code_size =
+        entry_code.opcodes.end() - entry_code.opcodes.begin();
+    const uint64_t absolute_jump_address =
+        entry_code.address + entry_code_size + relative_jump_address;
+    plt_entries.emplace_back(entry_address, absolute_jump_address);
+    counter++;
+  }
+
+  ElfRelocation relocation_info{};
+  const auto relocation_info_section =
+      get_section(relocation_plt_symbol_info_section_name);
+  _file.seekg(static_cast<long>(relocation_info_section.unloaded_offset));
+
+  while (static_cast<uint64_t>(_file.tellg()) <
+         relocation_info_section.unloaded_offset +
+             relocation_info_section.size) {
+    _file.read(reinterpret_cast<char *>(&relocation_info),
+               sizeof relocation_info);
+    for (const auto &entry : plt_entries) {
+      if (entry.entry_jump_to == relocation_info.file_offset) {
+        symbols[relocation_info.symbol_index].value = entry.entry_address;
+        break;
+      }
+    }
+  }
 }
 
 std::vector<ElfString> ElfReader::strings_factory() {

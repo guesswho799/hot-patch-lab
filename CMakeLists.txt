@@ -19,7 +19,13 @@ FetchContent_Declare(
   GIT_PROGRESS TRUE
   GIT_TAG v1.2.1
 )
-FetchContent_MakeAvailable(Boost Crow)
+FetchContent_Declare(
+  Capstone
+  GIT_REPOSITORY https://github.com/capstone-engine/capstone.git
+  GIT_PROGRESS TRUE
+  GIT_TAG 5.0.3
+)
+FetchContent_MakeAvailable(Boost Crow Capstone)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 file(GLOB_RECURSE sources src/*.cpp)
@@ -28,9 +34,8 @@ add_executable(${PROJECT_NAME} ${sources})
 set_property(TARGET ${PROJECT_NAME} PROPERTY INTERPROCEDURAL_OPTIMIZATION)
 
 target_link_libraries(${PROJECT_NAME}
-  PRIVATE
-  Crow::Crow
-  # Boost::asio
+  PRIVATE Crow::Crow
+  PRIVATE capstone
 )
 
 include_directories(include)
