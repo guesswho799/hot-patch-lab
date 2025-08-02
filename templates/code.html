@@ -98,17 +98,13 @@
       color: #111827;
     }
 
-    .action-buttons {
+    #action-buttons {
       display: flex;
       flex-direction: column;
       gap: 1rem;
     }
 
-    .action-buttons form {
-      display: block;
-    }
-
-    .action-buttons button {
+    #action-buttons button {
       padding: 1rem 1.5rem;
       font-size: 1.1rem;
       font-weight: 600;
@@ -122,13 +118,19 @@
       width: 150px;
     }
 
-    .action-buttons button:hover {
+    #action-buttons button:hover {
       background-color: #4338ca;
     }
   </style>
 
   <script>
-    function renderCodeWithLineNumbers() {
+    var socket;
+    function main() {
+      render_code_with_line_numbers();
+      open_websocket();
+    }
+
+    function render_code_with_line_numbers() {
       const raw = `{{assembly}}`.trim();
       const lines = raw.split('\n');
       const container = document.getElementById("code-content");
@@ -152,7 +154,64 @@
       });
     }
 
-    window.onload = renderCodeWithLineNumbers;
+    function open_websocket() {
+      sock = new WebSocket("ws://{{servername}}:18080/ws");
+
+      sock.onopen = ()=>{
+        console.log('open');
+        sock.send('{{process}} {{function}}');
+      }
+      sock.onerror = (e)=>{
+        console.log('error',e);
+      }
+      sock.onclose = (e)=>{
+        console.log('close', e);
+      }
+      sock.onmessage = (e)=>{
+        console.log('message', e);
+      }
+    }
+
+    function activate_patch(data) {
+      sock.send(data)
+    }
+
+    const actions = [
+      {{#actions}}"{{.}}", {{/actions}}
+    ];
+
+    function handleClick(action, event) {
+      event.preventDefault();
+
+      const form = document.getElementById("action-buttons");
+      form.innerHTML = ''; // Remove all current buttons
+
+      // Create and add "Back" button
+      const backBtn = document.createElement("button");
+      backBtn.type = "button";
+      backBtn.textContent = "Back";
+      backBtn.onclick = restoreButtons;
+      form.appendChild(backBtn);
+      activate_patch(action);
+    }
+
+    function restoreButtons() {
+      const form = document.getElementById("action-buttons");
+      form.innerHTML = ''; // Clear again
+
+      actions.forEach(action => {
+        const btn = document.createElement("button");
+        btn.type = "submit";
+        btn.textContent = action;
+        btn.onclick = function(event) {
+          handleClick(action, event);
+        };
+        form.appendChild(btn);
+      });
+      activate_patch("Back");
+    }
+
+    window.onload = main;
   </script>
 </head>
 <body>
@@ -171,16 +230,10 @@
       <!-- Populated by JS -->
     </div>
 
-    <div class="action-buttons">
-      <form method="POST" action="/{{process}}/{{function}}/counter">
-        <button type="submit">Counter Log</button>
-      </form>
-      <form method="POST" action="/{{process}}/{{function}}/time">
-        <button type="submit">Time</button>
-      </form>
-      <form method="POST" action="/{{process}}/{{function}}/custom">
-        <button type="submit">Custom</button>
-      </form>
+    <div id="action-buttons">
+      {{#actions}}
+        <button type="submit" onclick="handleClick('{{.}}', event)">{{.}}</button>
+      {{/actions}}
     </div>
   </div>
 
